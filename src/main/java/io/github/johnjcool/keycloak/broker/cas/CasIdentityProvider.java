@@ -1,7 +1,6 @@
 package io.github.johnjcool.keycloak.broker.cas;
 
-import io.github.johnjcool.keycloak.broker.cas.model.ServiceResponse;
-import io.github.johnjcool.keycloak.broker.cas.model.Success;
+
 import org.jboss.logging.Logger;
 import org.jboss.resteasy.client.jaxrs.ResteasyClientBuilder;
 import org.jboss.resteasy.spi.ResteasyProviderFactory;
@@ -32,6 +31,9 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.Response.Status;
 import javax.ws.rs.core.UriInfo;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 
 import static io.github.johnjcool.keycloak.broker.cas.util.UrlHelper.PROVIDER_PARAMETER_STATE;
@@ -77,7 +79,7 @@ public class CasIdentityProvider extends AbstractIdentityProvider<CasIdentityPro
 	}
 
 	@Override
-	public Object callback(final RealmModel realm, final org.keycloak.broker.provider.IdentityProvider.AuthenticationCallback callback,
+	public Object callback(final RealmModel realm, final AuthenticationCallback callback,
 			final EventBuilder event) {
 		return new Endpoint(callback, realm, event);
 	}
@@ -129,14 +131,14 @@ public class CasIdentityProvider extends AbstractIdentityProvider<CasIdentityPro
 				EventBuilder e = new EventBuilder(realm, session, clientConnection);
 				e.event(EventType.LOGOUT);
 				e.error(Errors.USER_SESSION_NOT_FOUND);
-				return ErrorPage.error(session, null, Response.Status.BAD_REQUEST, Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR);
+				return ErrorPage.error(session, null, Status.BAD_REQUEST, Messages.IDENTITY_PROVIDER_UNEXPECTED_ERROR);
 			}
 			if (userSession.getState() != UserSessionModel.State.LOGGING_OUT) {
 				logger.error("usersession in different state");
 				EventBuilder e = new EventBuilder(realm, session, clientConnection);
 				e.event(EventType.LOGOUT);
 				e.error(Errors.USER_SESSION_NOT_FOUND);
-				return ErrorPage.error(session, null, Response.Status.BAD_REQUEST, Messages.SESSION_NOT_ACTIVE);
+				return ErrorPage.error(session, null, Status.BAD_REQUEST, Messages.SESSION_NOT_ACTIVE);
 			}
 			return AuthenticationManager.finishBrowserLogout(session, realm, userSession, uriInfo, clientConnection, headers);
 		}
@@ -145,26 +147,48 @@ public class CasIdentityProvider extends AbstractIdentityProvider<CasIdentityPro
 				final UriInfo uriInfo, final String state) {
 			Response response = null;
 			try {
+
 				WebTarget target = client.target(createValidateServiceUrl(config, ticket, uriInfo, state));
+				//response = target.request(MediaType.APPLICATION_XML_TYPE).get();
 				response = target.request(MediaType.APPLICATION_XML_TYPE).get();
 				if (response.getStatus() != 200) {
 					throw new Exception("Failed : HTTP error code : " + response.getStatus());
 				}
+				//String entitys = (String) response.getEntity();
 
-				response.bufferEntity();
-				if (LOGGER_DUMP_USER_PROFILE.isDebugEnabled()) {
-					LOGGER_DUMP_USER_PROFILE.debug("User Profile XML Data for provider " + config.getAlias() + ": " + response.readEntity(String.class));
+				InputStream in= (InputStream)response.getEntity();
+
+				ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+
+				byte[] buffer = new byte[1024];
+
+				int len = 0;
+
+				while ((len = in.read(buffer)) != -1) {
+					baos.write(buffer, 0, len);
 				}
 
-				ServiceResponse serviceResponse = response.readEntity(ServiceResponse.class);
-				if (serviceResponse.getFailure() != null) {
-					throw new Exception(serviceResponse.getFailure().getCode() + "(" + serviceResponse.getFailure().getDescription()
-							+ ") for authentication by External IdP " + config.getProviderId());
+				in.close();
+
+				String entitys = baos.toString();
+
+				baos.close();
+
+				System.out.println("reslut:>>>>>>>>>>>" + entitys);
+
+				String userName;
+				if (entitys.equals("no\n\n")) {
+					throw new Exception("用户信息验证失败");
+				} else {
+					String[] items = entitys.split("\n");
+					userName = items[1];
 				}
-				Success success = serviceResponse.getSuccess();
-				BrokeredIdentityContext user = new BrokeredIdentityContext(success.getUser());
-				user.setUsername(success.getUser());
-				user.getContextData().put(USER_ATTRIBUTES, success.getAttributes());
+
+				System.out.println("login user:>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" + userName);
+				BrokeredIdentityContext user = new BrokeredIdentityContext(userName);
+				user.setUsername(userName);
+				//user.getContextData().put(USER_ATTRIBUTES, success.getAttributes());
 				user.setIdpConfig(config);
 				user.setIdp(CasIdentityProvider.this);
 				user.setCode(state);

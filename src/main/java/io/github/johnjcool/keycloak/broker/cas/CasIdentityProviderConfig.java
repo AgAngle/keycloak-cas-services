@@ -8,7 +8,7 @@ public class CasIdentityProviderConfig extends IdentityProviderModel {
 
 	private static final String DEFAULT_CAS_LOGIN_SUFFFIX = "login";
 	private static final String DEFAULT_CAS_LOGOUT_SUFFFIX = "logout";
-	private static final String DEFAULT_CAS_SERVICE_VALIDATE_SUFFFIX = "serviceValidate";
+	private static final String DEFAULT_CAS_SERVICE_VALIDATE_SUFFFIX = "validate";
 
 	public CasIdentityProviderConfig(final IdentityProviderModel model) {
 		super(model);
